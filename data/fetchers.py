@@ -15,14 +15,15 @@ class DataFetcher:
     """Fetches market data from free APIs."""
     
     @staticmethod
-    def fetch_stock_data_yfinance(symbol: str, period: str = '100d', interval: str = '30m') -> List[Candle]:
+    def fetch_stock_data_yfinance(symbol: str, period: str = '100d', interval: str = '1d') -> List[Candle]:
         """
         Fetch stock data using yfinance (free, no API key needed).
+        Falls back to Alpha Vantage if yfinance fails.
         
         Args:
             symbol: Stock symbol (e.g., 'SPY')
             period: Period to fetch ('100d', '5d', etc.)
-            interval: Candle interval ('30m', '1h', '1d')
+            interval: Candle interval ('1d' for daily, '1h' for hourly)
             
         Returns:
             List of Candle objects
@@ -30,6 +31,11 @@ class DataFetcher:
         try:
             data = yf.download(symbol, period=period, interval=interval, progress=False)
             candles = []
+            
+            # Check if data is empty
+            if data is None or data.empty:
+                logger.warning(f"yfinance returned no data for {symbol}, trying Alpha Vantage")
+                return DataFetcher.fetch_stock_data_alpha_vantage(symbol)
             
             for timestamp, row in data.iterrows():
                 candle = Candle(
@@ -46,7 +52,65 @@ class DataFetcher:
             logger.info(f"Fetched {len(candles)} candles for {symbol}")
             return candles
         except Exception as e:
-            logger.error(f"Error fetching data for {symbol}: {e}")
+            logger.warning(f"yfinance failed for {symbol}, trying Alpha Vantage: {e}")
+            # Fallback to Alpha Vantage
+            return DataFetcher.fetch_stock_data_alpha_vantage(symbol)
+
+    @staticmethod
+    def fetch_stock_data_alpha_vantage(symbol: str) -> List[Candle]:
+        """
+        Fetch stock data using Alpha Vantage API.
+        
+        Args:
+            symbol: Stock symbol (e.g., 'SPY')
+            
+        Returns:
+            List of Candle objects
+        """
+        try:
+            url = config.ALPHA_VANTAGE_BASE_URL
+            params = {
+                'function': 'TIME_SERIES_DAILY',
+                'symbol': symbol,
+                'apikey': config.ALPHA_VANTAGE_API_KEY,
+                'outputsize': 'full'
+            }
+            
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            if 'Error Message' in data:
+                logger.error(f"Alpha Vantage error: {data['Error Message']}")
+                return []
+            
+            if 'Note' in data:
+                logger.warning(f"Alpha Vantage rate limit: {data['Note']}")
+                return []
+            
+            time_series = data.get('Time Series (Daily)', {})
+            candles = []
+            
+            # Sort dates in ascending order and limit to last 100
+            dates = sorted(time_series.keys())[-100:]
+            
+            for date_str in dates:
+                row = time_series[date_str]
+                candle = Candle(
+                    timestamp=datetime.strptime(date_str, '%Y-%m-%d'),
+                    symbol=symbol,
+                    open=float(row['1. open']),
+                    high=float(row['2. high']),
+                    low=float(row['3. low']),
+                    close=float(row['4. close']),
+                    volume=int(float(row['5. volume']))
+                )
+                candles.append(candle)
+            
+            logger.info(f"Fetched {len(candles)} candles for {symbol} from Alpha Vantage")
+            return candles
+        except Exception as e:
+            logger.error(f"Error fetching data from Alpha Vantage for {symbol}: {e}")
             return []
 
     @staticmethod

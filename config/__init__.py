@@ -38,6 +38,6 @@ class Config:
     DEFAULT_TAKE_PROFIT_PERCENT = 4.0
     
     # Signal Thresholds
-    CONFIDENCE_THRESHOLD = 60  # Minimum confidence % for signals
+    CONFIDENCE_THRESHOLD = 40  # Minimum confidence % for signals (lowered to generate more signals)
 
 config = Config()
