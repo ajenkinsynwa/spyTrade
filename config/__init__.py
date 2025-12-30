@@ -22,6 +22,7 @@ class Config:
     UPDATE_INTERVAL = int(os.getenv('UPDATE_INTERVAL', 1800))  # 30 minutes
     SYMBOLS = os.getenv('SYMBOLS', 'SPY,BTC-USD').split(',')
     LOOKBACK_PERIOD = int(os.getenv('LOOKBACK_PERIOD', 100))
+    INTRADAY_LOOKBACK_DAYS = int(os.getenv('INTRADAY_LOOKBACK_DAYS', 60))
     
     # Technical Analysis Parameters
     RSI_PERIOD = 14

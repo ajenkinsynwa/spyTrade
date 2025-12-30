@@ -28,6 +28,7 @@ dashboard_data = {
         'indicators': {},
         'signal': None,
         'news_sentiment': None,
+        'news': [],
         'last_updated': None
     },
     'BTC-USD': {
@@ -35,6 +36,7 @@ dashboard_data = {
         'indicators': {},
         'signal': None,
         'news_sentiment': None,
+        'news': [],
         'last_updated': None
     }
 }
@@ -145,6 +147,16 @@ def get_sentiment(symbol):
             'neutral_count': 0,
             'total_articles': 0
         })
+
+
+@app.route('/api/news/<symbol>')
+def get_news(symbol):
+    """Get latest news articles for a symbol."""
+    if symbol not in dashboard_data:
+        return jsonify({'error': 'Symbol not found'}), 404
+
+    news = dashboard_data[symbol].get('news') or []
+    return jsonify({'symbol': symbol, 'articles': news})
 
 
 @app.route('/api/stats/<symbol>')
@@ -321,9 +333,9 @@ def update_dashboard_data():
                 try:
                     # Fetch data
                     if symbol == 'BTC-USD' or symbol == 'BTC':
-                        candles = DataFetcher.fetch_crypto_data('BTC')
+                        candles = DataFetcher.fetch_crypto_data_intraday('BTC')
                     else:
-                        candles = DataFetcher.fetch_stock_data_yfinance(symbol)
+                        candles = DataFetcher.fetch_stock_data_intraday(symbol, interval_minutes=30)
                     
                     if candles:
                         # Calculate indicators
@@ -348,6 +360,7 @@ def update_dashboard_data():
                             'indicators': indicators.to_dict(),
                             'signal': signal,
                             'news_sentiment': sentiment,
+                            'news': news,
                             'last_updated': datetime.now()
                         }
                         
@@ -400,9 +413,9 @@ def manual_update(symbol):
     try:
         # Fetch data
         if symbol == 'BTC-USD' or symbol == 'BTC':
-            candles = DataFetcher.fetch_crypto_data('BTC')
+            candles = DataFetcher.fetch_crypto_data_intraday('BTC')
         else:
-            candles = DataFetcher.fetch_stock_data_yfinance(symbol)
+            candles = DataFetcher.fetch_stock_data_intraday(symbol, interval_minutes=30)
         
         if candles:
             # Calculate indicators
@@ -438,6 +451,7 @@ def manual_update(symbol):
                 'indicators': indicators.to_dict(),
                 'signal': signal,
                 'news_sentiment': sentiment,
+                'news': news,
                 'last_updated': datetime.now()
             }
             

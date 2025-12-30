@@ -89,9 +89,9 @@ class SpyTradeApp:
         
         # Fetch market data
         if symbol == 'BTC-USD' or symbol == 'BTC':
-            candles = DataFetcher.fetch_crypto_data('BTC')
+            candles = DataFetcher.fetch_crypto_data_intraday('BTC')
         else:
-            candles = DataFetcher.fetch_stock_data_yfinance(symbol)
+            candles = DataFetcher.fetch_stock_data_intraday(symbol, interval_minutes=30)
         
         if not candles:
             logger.warning(f"No data fetched for {symbol}")

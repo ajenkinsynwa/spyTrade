@@ -511,7 +511,6 @@
                     <option value="BTC-USD">BTC - Bitcoin</option>
                 </select>
                 <button onclick="manualUpdate()">🔄 Refresh</button>
-                <button onclick="toggleUpdates()" id="updateToggle">▶ Start Live</button>
                 <div class="status-indicator">
                     <div class="status-dot" id="statusDot"></div>
                     <span id="statusText">Offline</span>
@@ -649,6 +648,14 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Latest News -->
+            <div class="card">
+                <div class="card-title">Latest Articles</div>
+                <div id="newsList" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <div class="stat-label">No articles loaded</div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -701,6 +708,13 @@
                     const sentiment = await sentimentResponse.json();
                     updateSentiment(sentiment);
                 }
+
+                // Fetch news articles
+                const newsResponse = await fetch(`/api/news/${currentSymbol}`);
+                if (newsResponse.ok) {
+                    const news = await newsResponse.json();
+                    updateNews(news.articles || []);
+                }
             } catch (error) {
                 console.error('Error updating dashboard:', error);
                 showAlert('Error updating dashboard', 'error');
@@ -709,6 +723,10 @@
 
         // Update chart
         function updateChart(data) {
+            const chartContainer = document.getElementById('chartContainer');
+            if (chartContainer.querySelector('.spinner')) {
+                chartContainer.innerHTML = '';
+            }
             const candles = data.candles;
             const indicators = data.indicators;
 
@@ -837,6 +855,59 @@
             document.getElementById('totalArticles').textContent = sentiment.total_articles || 0;
         }
 
+        // Update news list
+        function updateNews(articles) {
+            const newsList = document.getElementById('newsList');
+            newsList.innerHTML = '';
+
+            if (!articles.length) {
+                const empty = document.createElement('div');
+                empty.className = 'stat-label';
+                empty.textContent = 'No articles available';
+                newsList.appendChild(empty);
+                return;
+            }
+
+            articles.forEach((article) => {
+                const item = document.createElement('div');
+                item.style.padding = '0.75rem';
+                item.style.border = '1px solid var(--border)';
+                item.style.borderRadius = '0.5rem';
+                item.style.background = 'var(--secondary)';
+
+                const title = document.createElement('div');
+                title.style.fontWeight = '600';
+                title.style.marginBottom = '0.25rem';
+                title.textContent = article.headline || 'Untitled';
+
+                const meta = document.createElement('div');
+                meta.className = 'stat-label';
+                if (article.datetime) {
+                    const date = new Date(article.datetime * 1000 || article.datetime);
+                    meta.textContent = date.toLocaleString();
+                } else {
+                    meta.textContent = 'Unknown date';
+                }
+
+                item.appendChild(title);
+                item.appendChild(meta);
+
+                if (article.url) {
+                    const link = document.createElement('a');
+                    link.href = article.url;
+                    link.textContent = 'Read article';
+                    link.target = '_blank';
+                    link.rel = 'noopener';
+                    link.style.display = 'inline-block';
+                    link.style.marginTop = '0.5rem';
+                    link.style.color = 'var(--accent)';
+                    item.appendChild(link);
+                }
+
+                newsList.appendChild(item);
+            });
+        }
+
         // Manual update
         async function manualUpdate() {
             try {
@@ -853,28 +924,19 @@
             }
         }
 
-        // Toggle live updates
-        async function toggleUpdates() {
+        // Start live updates on load
+        async function startLiveUpdates() {
             if (isUpdating) {
-                // Stop updates
-                await fetch('/api/stop-updates');
-                isUpdating = false;
-                document.getElementById('updateToggle').textContent = '▶ Start Live';
-                document.getElementById('statusDot').classList.remove('active');
-                document.getElementById('statusText').textContent = 'Offline';
-                clearInterval(updateInterval);
-            } else {
-                // Start updates
-                await fetch('/api/start-updates');
-                isUpdating = true;
-                document.getElementById('updateToggle').textContent = '⏸ Stop Live';
-                document.getElementById('statusDot').classList.add('active');
-                document.getElementById('statusText').textContent = 'Live';
-                
-                // Update every 30 seconds (for UI refresh)
-                updateDashboard();
-                updateInterval = setInterval(updateDashboard, 30000);
+                return;
             }
+
+            await fetch('/api/start-updates');
+            isUpdating = true;
+            document.getElementById('statusDot').classList.add('active');
+            document.getElementById('statusText').textContent = 'Live';
+
+            updateDashboard();
+            updateInterval = setInterval(updateDashboard, 30000);
         }
 
         // Show alerts
@@ -892,7 +954,7 @@
         }
 
         // Initial load
-        updateDashboard();
+        startLiveUpdates();
     </script>
 </body>
 </html>

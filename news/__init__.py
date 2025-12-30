@@ -35,7 +35,7 @@ class SentimentAnalyzer:
         Returns:
             Sentiment score (-1.0 to 1.0)
         """
-        text = article.get('headline', '') + ' ' + article.get('content', '')
+        text = (article.get('headline') or '') + ' ' + (article.get('content') or '')
         
         if not text.strip():
             return 0.0
