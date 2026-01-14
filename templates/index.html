@@ -308,6 +308,120 @@
             color: var(--accent);
         }
 
+        /* Macro Snapshot */
+        .macro-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        @media (max-width: 640px) {
+            .macro-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Chat */
+        .chat-box {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            max-height: 320px;
+            overflow: auto;
+            padding: 0.75rem;
+            background: var(--secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+        }
+
+        .chat-bubble {
+            padding: 0.6rem 0.75rem;
+            border-radius: 0.5rem;
+            line-height: 1.4;
+        }
+
+        .chat-user {
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            align-self: flex-end;
+        }
+
+        .chat-bot {
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            align-self: flex-start;
+        }
+
+        .chat-input {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .chat-input input {
+            flex: 1;
+            padding: 0.6rem 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border);
+            background: var(--secondary);
+            color: var(--text);
+        }
+
+        .chat-fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            border: none;
+            background: var(--accent);
+            color: #0b0f1a;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 12px 25px rgba(59, 130, 246, 0.35);
+            z-index: 999;
+        }
+
+        .chat-panel {
+            position: fixed;
+            bottom: 92px;
+            right: 24px;
+            width: 360px;
+            max-width: calc(100vw - 48px);
+            background: var(--primary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            box-shadow: 0 20px 35px rgba(0, 0, 0, 0.35);
+            display: none;
+            z-index: 999;
+        }
+
+        .chat-panel.open {
+            display: block;
+        }
+
+        .chat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+        }
+
+        .chat-title {
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .chat-close {
+            border: none;
+            background: transparent;
+            color: var(--text);
+            font-size: 18px;
+            cursor: pointer;
+        }
+
         /* Sentiment Analysis */
         .sentiment-container {
             display: grid;
@@ -656,6 +770,31 @@
                     <div class="stat-label">No articles loaded</div>
                 </div>
             </div>
+
+            <!-- Macro Snapshot -->
+            <div class="card">
+                <div class="card-title">Macro Snapshot</div>
+                <div class="macro-grid" id="macroGrid">
+                    <div class="stat-label">No macro data loaded</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button class="chat-fab" id="chatFab" title="Chat">💬</button>
+    <div class="chat-panel" id="chatPanel">
+        <div class="chat-header">
+            <div class="chat-title">Chat</div>
+            <button class="chat-close" id="chatClose" title="Minimize">✕</button>
+        </div>
+        <div class="chat-box" id="chatBox">
+            <div class="chat-bubble chat-bot">
+                Ask about SPY or BTC using the data on this page. Try: "What is the current price?" or "Summarize sentiment."
+            </div>
+        </div>
+        <div class="chat-input">
+            <input id="chatInput" type="text" placeholder="Ask about SPY or BTC data on this page..." />
+            <button onclick="sendChat()">Ask</button>
         </div>
     </div>
 
@@ -669,12 +808,30 @@
         let currentSymbol = 'SPY';
         let isUpdating = false;
         let updateInterval = null;
+        const supportedSymbols = ['SPY', 'BTC-USD'];
+        const dashboardStateBySymbol = {
+            'SPY': { stats: null, signal: null, sentiment: null, news: [] },
+            'BTC-USD': { stats: null, signal: null, sentiment: null, news: [] }
+        };
+        const macroState = { series: {} };
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('symbolSelect').addEventListener('change', (e) => {
                 currentSymbol = e.target.value;
                 updateDashboard();
+            });
+
+            document.getElementById('chatFab').addEventListener('click', () => {
+                document.getElementById('chatPanel').classList.add('open');
+            });
+            document.getElementById('chatClose').addEventListener('click', () => {
+                document.getElementById('chatPanel').classList.remove('open');
+            });
+            document.getElementById('chatInput').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    sendChat();
+                }
             });
         });
 
@@ -693,6 +850,7 @@
                 if (statsResponse.ok) {
                     const stats = await statsResponse.json();
                     updateStats(stats);
+                    dashboardStateBySymbol[currentSymbol].stats = stats;
                 }
 
                 // Fetch signal
@@ -700,6 +858,7 @@
                 if (signalResponse.ok) {
                     const signal = await signalResponse.json();
                     updateSignal(signal);
+                    dashboardStateBySymbol[currentSymbol].signal = signal;
                 }
 
                 // Fetch sentiment
@@ -707,6 +866,7 @@
                 if (sentimentResponse.ok) {
                     const sentiment = await sentimentResponse.json();
                     updateSentiment(sentiment);
+                    dashboardStateBySymbol[currentSymbol].sentiment = sentiment;
                 }
 
                 // Fetch news articles
@@ -714,7 +874,19 @@
                 if (newsResponse.ok) {
                     const news = await newsResponse.json();
                     updateNews(news.articles || []);
+                    dashboardStateBySymbol[currentSymbol].news = news.articles || [];
                 }
+
+                // Fetch macro snapshot
+                const macroResponse = await fetch('/api/macro');
+                if (macroResponse.ok) {
+                    const macro = await macroResponse.json();
+                    updateMacro(macro.series || {});
+                    macroState.series = macro.series || {};
+                }
+
+                const otherSymbol = currentSymbol === 'SPY' ? 'BTC-USD' : 'SPY';
+                refreshSymbolState(otherSymbol);
             } catch (error) {
                 console.error('Error updating dashboard:', error);
                 showAlert('Error updating dashboard', 'error');
@@ -906,6 +1078,192 @@
 
                 newsList.appendChild(item);
             });
+        }
+
+        function updateMacro(series) {
+            const macroGrid = document.getElementById('macroGrid');
+            macroGrid.innerHTML = '';
+
+            const items = [
+                { key: 'fed_funds', label: 'Fed Funds (%)' },
+                { key: 'cpi', label: 'CPI Index' },
+                { key: 'unemployment', label: 'Unemployment (%)' },
+                { key: 'treasury_2y', label: '2Y Treasury (%)' },
+                { key: 'treasury_10y', label: '10Y Treasury (%)' },
+                { key: 'yield_spread_10y_2y', label: '10Y-2Y Spread (%)' }
+            ];
+
+            let hasData = false;
+            items.forEach((item) => {
+                const entry = series[item.key];
+                if (!entry || entry.value === null || entry.value === undefined) {
+                    return;
+                }
+                hasData = true;
+
+                const box = document.createElement('div');
+                box.className = 'indicator-item';
+
+                const name = document.createElement('div');
+                name.className = 'indicator-name';
+                name.textContent = item.label;
+
+                const value = document.createElement('div');
+                value.className = 'indicator-value';
+                value.textContent = entry.value.toFixed(2);
+
+                box.appendChild(name);
+                box.appendChild(value);
+                macroGrid.appendChild(box);
+            });
+
+            if (!hasData) {
+                const empty = document.createElement('div');
+                empty.className = 'stat-label';
+                empty.textContent = 'No macro data available';
+                macroGrid.appendChild(empty);
+            }
+        }
+
+        function appendChat(message, role) {
+            const chatBox = document.getElementById('chatBox');
+            const bubble = document.createElement('div');
+            bubble.className = `chat-bubble ${role === 'user' ? 'chat-user' : 'chat-bot'}`;
+            bubble.textContent = message;
+            chatBox.appendChild(bubble);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function formatNumber(value, decimals = 2) {
+            if (value === null || value === undefined || Number.isNaN(value)) {
+                return 'n/a';
+            }
+            return Number(value).toFixed(decimals);
+        }
+
+        function getSymbolFromQuestion(text) {
+            if (text.includes('btc') || text.includes('bitcoin')) {
+                return 'BTC-USD';
+            }
+            if (text.includes('spy') || text.includes('s&p') || text.includes('spx') || text.includes('s&p 500')) {
+                return 'SPY';
+            }
+            return currentSymbol;
+        }
+
+        function buildChatAnswer(question, symbol) {
+            const text = question.toLowerCase();
+            const stats = (dashboardStateBySymbol[symbol] || {}).stats || {};
+            const signal = (dashboardStateBySymbol[symbol] || {}).signal || {};
+            const sentiment = (dashboardStateBySymbol[symbol] || {}).sentiment || {};
+            const macro = macroState.series || {};
+
+            if (text.includes('help') || text.includes('what can')) {
+                return 'I can answer about price, signal, indicators, sentiment, news counts, and macro (Fed, CPI, unemployment, yields) for SPY or BTC.';
+            }
+
+            if (text.includes('price') || text.includes('current price')) {
+                return `${symbol} current price is $${formatNumber(stats.current_price)}.`;
+            }
+
+            if (text.includes('high') || text.includes('low')) {
+                return `${symbol} high is $${formatNumber(stats.high)} and low is $${formatNumber(stats.low)}.`;
+            }
+
+            if (text.includes('change') || text.includes('percent')) {
+                return `${symbol} change is ${formatNumber(stats.price_change_percent)}%.`;
+            }
+
+            if (text.includes('signal') || text.includes('buy') || text.includes('sell')) {
+                return `${symbol} signal is ${signal.signal_type || 'HOLD'} with ${formatNumber(signal.confidence, 1)}% confidence.`;
+            }
+
+            if (text.includes('rsi')) {
+                return `RSI is ${formatNumber(signal.technical_indicators?.rsi)}.`;
+            }
+
+            if (text.includes('macd')) {
+                return `MACD is ${formatNumber(signal.technical_indicators?.macd)} with signal ${formatNumber(signal.technical_indicators?.macd_signal)}.`;
+            }
+
+            if (text.includes('sma')) {
+                return `SMA20 is ${formatNumber(signal.technical_indicators?.sma_20)} and SMA50 is ${formatNumber(signal.technical_indicators?.sma_50)}.`;
+            }
+
+            if (text.includes('atr')) {
+                return `ATR is ${formatNumber(signal.technical_indicators?.atr)}.`;
+            }
+
+            if (text.includes('sentiment') || text.includes('news')) {
+                return `Sentiment is ${sentiment.category || 'Neutral'} with ${sentiment.total_articles || 0} articles.`;
+            }
+
+            if (text.includes('fed') || text.includes('funds')) {
+                return `Fed Funds rate is ${formatNumber(macro.fed_funds?.value)}%.`;
+            }
+
+            if (text.includes('cpi') || text.includes('inflation')) {
+                return `CPI index is ${formatNumber(macro.cpi?.value)}.`;
+            }
+
+            if (text.includes('unemployment') || text.includes('jobs')) {
+                return `Unemployment rate is ${formatNumber(macro.unemployment?.value)}%.`;
+            }
+
+            if (text.includes('10y') || text.includes('2y') || text.includes('yield')) {
+                const t2 = formatNumber(macro.treasury_2y?.value);
+                const t10 = formatNumber(macro.treasury_10y?.value);
+                const spread = formatNumber(macro.yield_spread_10y_2y?.value);
+                return `2Y is ${t2}%, 10Y is ${t10}%, spread is ${spread}%.`;
+            }
+
+            return 'I can answer about SPY or BTC using the data on this page. Try asking about price, signal, indicators, sentiment, or macro.';
+        }
+
+        async function refreshSymbolState(symbol) {
+            if (!supportedSymbols.includes(symbol)) {
+                return;
+            }
+            try {
+                const statsResponse = await fetch(`/api/stats/${symbol}`);
+                if (statsResponse.ok) {
+                    dashboardStateBySymbol[symbol].stats = await statsResponse.json();
+                } else if (statsResponse.status === 404) {
+                    await fetch(`/api/manual-update/${symbol}`);
+                }
+
+                const signalResponse = await fetch(`/api/signal/${symbol}`);
+                if (signalResponse.ok) {
+                    dashboardStateBySymbol[symbol].signal = await signalResponse.json();
+                }
+
+                const sentimentResponse = await fetch(`/api/sentiment/${symbol}`);
+                if (sentimentResponse.ok) {
+                    dashboardStateBySymbol[symbol].sentiment = await sentimentResponse.json();
+                }
+
+                const newsResponse = await fetch(`/api/news/${symbol}`);
+                if (newsResponse.ok) {
+                    const news = await newsResponse.json();
+                    dashboardStateBySymbol[symbol].news = news.articles || [];
+                }
+            } catch (error) {
+                console.error('Error refreshing symbol state:', error);
+            }
+        }
+
+        async function sendChat() {
+            const input = document.getElementById('chatInput');
+            const question = input.value.trim();
+            if (!question) {
+                return;
+            }
+            appendChat(question, 'user');
+            input.value = '';
+            const targetSymbol = getSymbolFromQuestion(question.toLowerCase());
+            await refreshSymbolState(targetSymbol);
+            const answer = buildChatAnswer(question, targetSymbol);
+            appendChat(answer, 'bot');
         }
 
         // Manual update

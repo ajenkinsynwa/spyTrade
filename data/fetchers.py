@@ -445,6 +445,62 @@ class DataFetcher:
 
         return []
 
+    @staticmethod
+    def fetch_fred_series_latest(series_id: str) -> Optional[Dict[str, str]]:
+        """Fetch latest observation for a FRED series."""
+        if not config.FRED_API_KEY:
+            return None
+
+        try:
+            params = {
+                "series_id": series_id,
+                "api_key": config.FRED_API_KEY,
+                "file_type": "json",
+                "sort_order": "desc",
+                "limit": 1,
+            }
+            resp = requests.get(f"{config.FRED_BASE_URL}/series/observations", params=params, timeout=15)
+            payload = resp.json()
+            observations = payload.get("observations", [])
+            if not observations:
+                return None
+
+            obs = observations[0]
+            value = obs.get("value")
+            if value in (None, "."):
+                return None
+
+            return {
+                "date": obs.get("date"),
+                "value": float(value),
+            }
+        except Exception as e:
+            logger.error("FRED fetch failed for %s: %s", series_id, e)
+            return None
+
+    @staticmethod
+    def fetch_macro_snapshot() -> Dict[str, Dict[str, Optional[float]]]:
+        """Fetch a macro snapshot from FRED."""
+        series_map = {
+            "fed_funds": "FEDFUNDS",
+            "cpi": "CPIAUCSL",
+            "unemployment": "UNRATE",
+            "treasury_2y": "DGS2",
+            "treasury_10y": "DGS10",
+            "yield_spread_10y_2y": "T10Y2Y",
+        }
+
+        snapshot: Dict[str, Dict[str, Optional[float]]] = {}
+        for key, series_id in series_map.items():
+            latest = DataFetcher.fetch_fred_series_latest(series_id)
+            snapshot[key] = {
+                "series_id": series_id,
+                "value": latest["value"] if latest else None,
+                "date": latest["date"] if latest else None,
+            }
+
+        return snapshot
+
 class MarketDataProcessor:
     """Simple processors for candles."""
 

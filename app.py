@@ -8,6 +8,7 @@ import plotly
 import plotly.graph_objs as go
 from threading import Thread
 import time
+import requests
 
 from config import config
 from data.fetchers import DataFetcher, MarketDataProcessor
@@ -39,6 +40,11 @@ dashboard_data = {
         'news': [],
         'last_updated': None
     }
+}
+
+macro_data = {
+    "series": {},
+    "last_updated": None
 }
 
 # Background update thread
@@ -193,6 +199,88 @@ def get_stats(symbol):
     })
 
 
+@app.route('/api/macro')
+def get_macro():
+    """Get latest macro snapshot."""
+    return jsonify({
+        "series": macro_data.get("series", {}),
+        "last_updated": macro_data.get("last_updated").isoformat() if macro_data.get("last_updated") else None
+    })
+
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    """LLM chat endpoint restricted to SPY/BTC dashboard data."""
+    if not config.OPENAI_API_KEY:
+        return jsonify({'error': 'OpenAI API key not configured'}), 500
+
+    payload = request.get_json(silent=True) or {}
+    message = (payload.get('message') or '').strip()
+    symbol = (payload.get('symbol') or 'SPY').upper()
+
+    if symbol not in dashboard_data:
+        return jsonify({'error': 'Symbol not found'}), 404
+    if not message:
+        return jsonify({'error': 'Message is required'}), 400
+
+    data = dashboard_data[symbol]
+    stats = None
+    if data.get('candles'):
+        candles = data['candles']
+        price_processor = MarketDataProcessor()
+        stats = {
+            "current_price": candles[-1].close,
+            "price_change_percent": price_processor.calculate_price_change(candles),
+            "high": max(c.high for c in candles),
+            "low": min(c.low for c in candles),
+            "total_candles": len(candles)
+        }
+
+    context = {
+        "symbol": symbol,
+        "stats": stats,
+        "signal": data.get('signal').to_dict() if data.get('signal') else None,
+        "indicators": data.get('indicators'),
+        "sentiment": data.get('news_sentiment'),
+        "news_headlines": [n.get('headline') for n in (data.get('news') or [])][:8],
+        "macro": macro_data.get("series", {})
+    }
+
+    system_prompt = (
+        "You are a trading assistant restricted to SPY and BTC-USD data provided in the context. "
+        "Answer only using the context. If the question is outside the provided data, say you can only "
+        "answer based on the dashboard data for SPY and BTC."
+    )
+
+    user_prompt = f"User question: {message}\n\nContext JSON:\n{json.dumps(context, default=str)}"
+
+    try:
+        response = requests.post(
+            f"{config.OPENAI_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {config.OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "temperature": 0.2,
+                "max_tokens": 400,
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        data = response.json()
+        answer = data["choices"][0]["message"]["content"].strip()
+        return jsonify({"answer": answer})
+    except Exception as e:
+        logger.error("OpenAI chat failed: %s", e)
+        return jsonify({'error': 'Chat request failed'}), 500
+
+
 @app.route('/api/ai-prediction/<symbol>')
 def get_ai_prediction(symbol):
     """Get AI/ML price prediction for a symbol."""
@@ -209,7 +297,11 @@ def get_ai_prediction(symbol):
         prices = [c.close for c in candles]
         
         # Get AI prediction
-        prediction, confidence = MLPredictor.predict_next_move(prices)
+        prediction, confidence = MLPredictor.predict_with_features(
+            candles=candles,
+            indicators=data.get('indicators'),
+            news_sentiment=data.get('news_sentiment', {}).get('average_sentiment')
+        )
         
         # Detect support/resistance levels
         resistances, supports = MLPredictor.detect_support_resistance_clusters(prices)
@@ -253,7 +345,11 @@ def get_ai_summary(symbol):
         indicators = data['indicators']
         
         # Get all AI metrics
-        prediction, confidence = MLPredictor.predict_next_move(prices)
+        prediction, confidence = MLPredictor.predict_with_features(
+            candles=candles,
+            indicators=indicators,
+            news_sentiment=data.get('news_sentiment', {}).get('average_sentiment')
+        )
         resistances, supports = MLPredictor.detect_support_resistance_clusters(prices)
         volatility_regime = MLPredictor.calculate_volatility_regime(prices)
         patterns = MLPredictor.identify_patterns(candles)
@@ -327,6 +423,9 @@ def update_dashboard_data():
     
     while is_running:
         try:
+            macro_data["series"] = DataFetcher.fetch_macro_snapshot()
+            macro_data["last_updated"] = datetime.now()
+
             for symbol in config.SYMBOLS:
                 logger.info(f"Updating data for {symbol}")
                 
@@ -454,6 +553,9 @@ def manual_update(symbol):
                 'news': news,
                 'last_updated': datetime.now()
             }
+
+            macro_data["series"] = DataFetcher.fetch_macro_snapshot()
+            macro_data["last_updated"] = datetime.now()
             
             return jsonify({
                 'status': 'success',

@@ -11,12 +11,16 @@ class Config:
     ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY', 'demo')
     FINNHUB_API_KEY = os.getenv('FINNHUB_API_KEY', '')
     NEWS_API_KEY = os.getenv('NEWS_API_KEY', '')
+    FRED_API_KEY = os.getenv('FRED_API_KEY', '')
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
     
     # API Endpoints
     ALPHA_VANTAGE_BASE_URL = 'https://www.alphavantage.co/query'
     FINNHUB_BASE_URL = 'https://finnhub.io/api/v1'
     NEWS_API_BASE_URL = 'https://newsapi.org/v2'
     COINGECKO_BASE_URL = 'https://api.coingecko.com/api/v3'
+    FRED_BASE_URL = 'https://api.stlouisfed.org/fred'
+    OPENAI_BASE_URL = 'https://api.openai.com/v1'
     
     # Application Settings
     UPDATE_INTERVAL = int(os.getenv('UPDATE_INTERVAL', 1800))  # 30 minutes

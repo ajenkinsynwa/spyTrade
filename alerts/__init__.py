@@ -6,6 +6,7 @@ from typing import Optional
 from config import config
 from data import TradeSignal
 from analysis import TechnicalAnalyzer
+from analysis.ai_models import MLPredictor
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,12 @@ class SignalGenerator:
         indicators_used = []
         
         # PRIMARY: AI PREDICTION (50% weight) - This is the main decision
+        if ml_prediction is None:
+            ml_prediction, _ = MLPredictor.predict_with_features(
+                candles=candles,
+                indicators=technical_indicators,
+                news_sentiment=news_sentiment
+            )
         ai_score = SignalGenerator._analyze_ml_prediction(ml_prediction, indicators_used)
         
         # SECONDARY: Technical Indicators as CONFIRMATION (35% weight)
@@ -68,6 +75,9 @@ class SignalGenerator:
         
         # Determine signal type based on AI prediction
         signal_type = SignalGenerator._determine_signal_type_ai_first(ai_score, technical_avg, news_score)
+        if signal_type == 'HOLD':
+            # Force a directional signal when AI is neutral
+            signal_type = 'BUY' if ai_score >= 50 else 'SELL'
         
         # Determine risk parameters
         if atr_value is None:
@@ -97,10 +107,6 @@ class SignalGenerator:
             ma_score,
             price_action
         )
-        
-        # Lower threshold for signals since AI is driving it
-        if total_confidence < 35:  # Lowered from 40
-            return None
         
         signal = TradeSignal(
             symbol=symbol,
